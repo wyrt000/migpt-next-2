@@ -1,3 +1,5 @@
+> 在 [MiGPT-Next-2](https://github.com/whBettering/migpt-next-2)基础上修改为原生引擎发声，并限制火山联网搜索次数2
+
 # MiGPT-Next 增强版
 
 让小爱音箱接上大模型（豆包、DeepSeek、ChatGPT 等都可以），让它更聪明。
