@@ -85,8 +85,13 @@ class _OpenAI {
           {
             model: params.model!,
             input: params.messages as any,
-            tools: [{ type: 'web_search' }],
+            // 仅使用默认的 search_engine（「联网资源」，每月免费 2 万次），
+            // 不传 sources 即不会调用头条/抖音/墨迹天气等收费数据源（各 6 元/千次）。
+            // max_keyword 限制单轮搜索的关键词数量，避免额度被多关键词放大消耗。
+            tools: [{ type: 'web_search', max_keyword: 2 }],
             tool_choice: 'auto',
+            // 限制一次回答内最多执行 2 轮工具调用（默认 3），进一步压低额度消耗上限。
+            max_tool_calls: 2,
           } as any,
           mergedRequestOptions,
         );
@@ -97,11 +102,22 @@ class _OpenAI {
         if (result.searched) {
           if (result.sources.length > 0) {
             console.log(
-              '🌐 联网来源：',
+              '🌐 联网来源（引用链接，共 ',
+              result.sources.length,
+              ' 条）：',
               result.sources.map((source) => `${source.title}: ${source.url}`).join('\n'),
             );
           } else {
             console.log('🌐 已使用联网搜索');
+          }
+          // 打印真实计费用量：tool_usage_details 会按来源给出调用次数，
+          // 其中 search_engine 即「联网资源」消耗次数，用于核对免费额度。
+          const usage: any = (response as any)?.usage;
+          if (usage?.tool_usage_details || usage?.tool_usage) {
+            console.log(
+              '📊 联网用量（计费口径）：',
+              JSON.stringify(usage.tool_usage_details ?? usage.tool_usage),
+            );
           }
         }
         if (requestId) {
