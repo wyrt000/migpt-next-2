@@ -5,6 +5,14 @@ function isXiaoAIAnswerFailure(text) {
 }
 
 /**
+ * 切换到外接 LLM 时先播报的占位提示，用来填补"小爱答不上来 → LLM 返回结果"之间的静默空档。
+ *
+ * - 设为 ''（空字符串）即可关闭。
+ * - 文本越短，占用的时间越少；建议 8~12 字。
+ */
+const LLM_THINKING_NOTICE = '切换外接大模型，请稍等';
+
+/**
  * @type {import('@mi-gpt/next').MiGPTConfig}
  */
 export default {
@@ -15,25 +23,25 @@ export default {
      *
      * 如果提示找不到设备，请打开调试模式获取设备真实的 name、miotDID 或 mac 地址填入
      */
-    did: '小爱音箱Play',
+    did: '小米AI音箱',
     /**
      * 小米 ID（一串数字）
      *
      * 注意：不是手机号或邮箱，请在小米账号「个人信息」-「小米 ID」查看
      */
-    userId: 'xiaomizhanghaoidxxxx',
+    userId: '小米 ID（一串数字）',
     /**
      * 小米账号登录密码
      *
      * 如果提示登录失败，请使用 passToken 登录
      */
-    password: 'xiaomizhanghaomimaxxxx',
+    password: '小米账号登录密码',
     /**
      * （可选）小米账号 passToken
      *
      * 获取教程：https://github.com/idootop/migpt-next/issues/4
      */
-    passToken: 'xiaomizhanghaopasstokenxxxx',
+    passToken: 'V1:pwxxxxxxxxxxxxxxxxxxxxxxxxxxxQw==',
   },
   openai: {
     enableProxy: true,
@@ -47,17 +55,18 @@ export default {
      * - ❌ https://api.openai.com/v1/（最后多了一个 /
      * - ❌ https://api.openai.com/v1/chat/completions（不需要加 /chat/completions）
      */
-    baseURL: 'https://ark.cn-beijing.volces.com/api/v3', //这里是火山引擎 baseURL示例
+    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
     /**
      * API 密钥
      */
-    apiKey: 'apikeyxxxxxxxxxxxxxxxxxxx',
+    apiKey: 'ark-xxxx',
     /**
      * 模型名称，注意这里填的是火山引擎的模型接入点，ep 开头
      */
-    model: 'ep-202608xxxxxxxxx',
+    model: 'ep-2026xxxx',
     /**
-     * 按需联网：由模型判断当前问题是否需要搜索最新信息。
+     * 按需联网：migpt 使用 OpenAI Responses API 的 web_search 工具实现。
+     * 火山方舟需先在控制台开通「联网搜索」内容插件，否则会返回 404 并退化成凭模型记忆作答。
      */
     webSearch: {
       enabled: true,
@@ -123,20 +132,30 @@ export default {
       console.log(`🤖 小爱无法回答，切换外接 LLM：${xiaoAIAnswer}`);
     }
 
-    // L05B 的 MiNA TTS 无法稳定抢占小爱原生回复，改用 MIoT 的“播放文本”动作。
+    // 使用引擎内置的 TTS 通道（MiNA）播放 LLM 回复，避免手写 MiOT 动作在部分机型上无声音。
     const stopped = await engine.speaker.abortXiaoAI();
     if (!stopped) {
       console.warn('⚠️ 未能确认已停止小爱原生播报，继续切换外接 LLM');
     }
-    await engine.MiOT.doAction(5, 3, '正在思考中');
 
-    const { text } = await engine.askAI(msg, { stream: false });
-    if (text) {
-      console.log(`🔊 ${text}`);
-      await engine.MiOT.doAction(5, 3, text);
+    // 关键体验优化：先并行发起 LLM 请求，同时播报占位提示，
+    // 填补"小爱答不上来 → LLM 返回"之间的静默空档（否则会长时间无声，像断线）。
+    const answerPromise = engine.askAI(msg, { stream: false });
+    if (LLM_THINKING_NOTICE) {
+      try {
+        await engine.speaker.play({ text: LLM_THINKING_NOTICE });
+      } catch (error) {
+        console.warn('⚠️ 播放占位提示失败：', error);
+      }
     }
 
-    // 阻止引擎再走默认的 MiNA TTS 链路。
+    const { text } = await answerPromise;
+    if (text) {
+      console.log(`🔊 ${text}`);
+      await engine.speaker.play({ text });
+    }
+
+    // 阻止引擎再走默认的回复链路。
     return { handled: true };
   },
 };
